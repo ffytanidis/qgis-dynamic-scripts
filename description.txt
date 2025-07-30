@@ -1,0 +1,20 @@
+Included Scripts:
+
+Selection_Stats
+➤ Displays the average area of the selected geometries (in square meters).
+
+Selection_field_values_comma_sep
+➤ Prompts for a field name, then lists its values from selected features, comma-separated.
+
+calculate_iou
+➤ Calculates and shows the Intersection over Union (IoU) of selected geometries.
+➤ Works across different layers.
+
+get_WKT
+➤ Shows the Well-Known Text (WKT) of the first selected geometry.
+
+google_maps_link
+➤ Opens Google Maps in your browser at the center of the current QGIS view.
+
+to_octagon
+➤ Converts selected geometries to octagons with the same area and centroid.
