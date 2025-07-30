@@ -1,26 +1,26 @@
 [
   {
-    "name": "Selection_Stats",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/Selection_Stats.py"
-  },
-  {
-    "name": "Selection_field_values_comma_sep",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/Selection_field_values_comma_sep.py"
-  },
-  {
     "name": "calculate_iou",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/calculate_iou.py"
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/calculate_iou.py"
   },
   {
     "name": "get_WKT",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/get_WKT.py"
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/get_WKT.py"
   },
   {
     "name": "google_maps_link",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/google_maps_link.py"
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/google_maps_link.py"
+  },
+  {
+    "name": "Selection_field_values_comma_sep",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Selection_field_values_comma_sep.py"
+  },
+  {
+    "name": "Selection_Stats",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Selection_Stats.py"
   },
   {
     "name": "to_octagon",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/to_octagon.py"
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/to_octagon.py"
   }
 ]
