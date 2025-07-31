@@ -1,6 +1,7 @@
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
 from qgis.utils import iface
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QPushButton, QApplication
+from PyQt5.QtGui import QClipboard
 
 # get canvas and extent
 canvas = iface.mapCanvas()
@@ -26,5 +27,20 @@ sql_clause = (
     f"and ps.LAT between {min_lat:.7f} and {max_lat:.7f}"
 )
 
-# show in message box
-QMessageBox.information(None, "Visible Extent as SQL", sql_clause)
+
+# create the message box
+msg_box = QMessageBox()
+msg_box.setWindowTitle("Visible Extent as SQL")
+msg_box.setText(sql_clause)
+
+# add custom Copy button
+copy_button = msg_box.addButton("Copy", QMessageBox.ActionRole)
+msg_box.addButton(QMessageBox.Ok)
+
+# show the box
+msg_box.exec_()
+
+# handle Copy button
+if msg_box.clickedButton() == copy_button:
+    clipboard = QApplication.clipboard()
+    clipboard.setText(sql_clause)
