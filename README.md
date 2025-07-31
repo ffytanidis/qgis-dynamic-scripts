@@ -7,7 +7,7 @@ The plugin auto-loads these scripts into a custom toolbar and stays updated from
 
 ## 🔧 Installation
 
-1. [Download `DynamicScriptToolbar_latest`](./DynamicScriptToolbar_latest)
+1. [Download `DynamicScriptToolbar_latest.zip`](./DynamicScriptToolbar_latest.zip)
 2. In QGIS, go to:
    - `Plugins` → `Manage and Install Plugins` → `Install from ZIP`
    - Browse to the downloaded file and install
