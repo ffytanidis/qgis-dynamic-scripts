@@ -17,8 +17,8 @@ The plugin auto-loads these scripts into a custom toolbar and stays updated from
 
 ## 🔄 Auto Updates
 
-The plugin automatically checks for new versions using this repository.  
-You'll be notified when updates are available — no manual steps needed.
+The plugin automatically checks for new scripts in json and loads from folder.
+You'll be notified when core plugin updates are available.
 
 ---
 
