@@ -1,3 +1,4 @@
+
 # QGIS script to run parameterized SQL query on MSSQL connection and export result to CSV
 
 from qgis.PyQt.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QVBoxLayout, QFileDialog, QLabel, QCheckBox, QHBoxLayout, QApplication, QMessageBox
@@ -31,12 +32,26 @@ class InputDialog(QDialog):
         self.settings = QSettings()
 
         self.conn_name_input = QLineEdit(self.settings.value("conn_name", ""))
+        self.conn_name_input.setMinimumWidth(400)
+
         self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))
+        self.folder_path_input.setMinimumWidth(400)
+
         self.output_file_input = QLineEdit(self.settings.value("output_file", "output.csv"))
+        self.output_file_input.setMinimumWidth(400)
+
         self.speed_from_input = QLineEdit(self.settings.value("speed_from", "0"))
+        self.speed_from_input.setMinimumWidth(400)
+
         self.speed_to_input = QLineEdit(self.settings.value("speed_to", "0"))
+        self.speed_to_input.setMinimumWidth(400)
+
         self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2023-07-20 00:00"))
+        self.timestamp_start_input.setMinimumWidth(400)
+
         self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2023-07-20 00:00"))
+        self.timestamp_end_input.setMinimumWidth(400)
+
         self.only_imo_checkbox = QCheckBox("Only Having IMO")
         self.only_imo_checkbox.setChecked(self.settings.value("only_having_imo", "true") == "true")
 
@@ -154,8 +169,8 @@ reply = QMessageBox.question(None, "Confirm Export", f"Query will return {total_
 if reply != QMessageBox.Yes:
     raise Exception("Cancelled by user")
 
-# Run the actual query
-results = conn.executeSql(sql)
+# Re-run the actual query after confirmation
+results = list(conn.executeSql(sql))  # force evaluation
 
 # Explicit column names
 header = [
