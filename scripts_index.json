@@ -24,6 +24,10 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/to_octagon.py"
   },
   {
+    "name": "box_positions",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/box_positions.py"
+  },
+  {
     "name": "SQL_bbox",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/SQL_bbox.py"
   }
