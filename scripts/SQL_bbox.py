@@ -28,34 +28,35 @@ sql_clause = (
     f"and ps.LAT between {min_lat:.7f} and {max_lat:.7f}"
 )
 
-# custom dialog with copy functionality
-dialog = QDialog()
-dialog.setModal(True)
-dialog.setWindowTitle("Visible Extent as SQL")
+# custom dialog
+class SQLDialog(QDialog):
+    def __init__(self, sql_text):
+        super().__init__()
+        self.setWindowTitle("Visible Extent as SQL")
+        self.setModal(True)
+        layout = QVBoxLayout()
 
-layout = QVBoxLayout()
+        self.label = QLabel(sql_text)
+        self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.label)
 
-label = QLabel(sql_clause)
-label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-layout.addWidget(label)
+        btn_layout = QHBoxLayout()
+        self.copy_button = QPushButton("Copy")
+        self.ok_button = QPushButton("OK")
+        btn_layout.addWidget(self.copy_button)
+        btn_layout.addWidget(self.ok_button)
+        layout.addLayout(btn_layout)
 
-# buttons
-button_layout = QHBoxLayout()
-copy_button = QPushButton("Copy")
-ok_button = QPushButton("OK")
+        self.setLayout(layout)
 
-button_layout.addWidget(copy_button)
-button_layout.addWidget(ok_button)
-layout.addLayout(button_layout)
+        # connect buttons
+        self.copy_button.clicked.connect(self.copy_and_close)
+        self.ok_button.clicked.connect(self.close)
 
-dialog.setLayout(layout)
+    def copy_and_close(self):
+        QApplication.clipboard().setText(self.label.text())
+        self.close()  # force close instead of accept()
 
-# connect buttons
-def copy_and_close():
-    QApplication.clipboard().setText(sql_clause)
-    dialog.accept()
-
-copy_button.clicked.connect(copy_and_close)
-ok_button.clicked.connect(dialog.accept)
-
-dialog.exec_()
+# show dialog
+dialog = SQLDialog(sql_clause)
+dialog.show()
