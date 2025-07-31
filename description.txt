@@ -18,3 +18,6 @@ google_maps_link
 
 to_octagon
 ➤ Converts selected geometries to octagons with the same area and centroid.
+
+SQL_bbox
+➤ Generate a SQL-style bounding box filter (WHERE ps.LON ... AND ps.LAT ...) based on the visible map extent in QGIS, always in EPSG:4326 (WGS84), regardless of current canvas CRS.
