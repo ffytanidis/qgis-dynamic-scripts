@@ -22,5 +22,9 @@
   {
     "name": "to_octagon",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/to_octagon.py"
+  },
+  {
+    "name": "SQL_bbox",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/SQL_bbox.py"
   }
 ]
