@@ -35,7 +35,7 @@ dialog.setWindowTitle("Visible Extent as SQL")
 layout = QVBoxLayout()
 
 label = QLabel(sql_clause)
-label.setTextInteractionFlags(Qt.TextSelectableByMouse)  # allow selection
+label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 layout.addWidget(label)
 
 # buttons
@@ -50,7 +50,11 @@ layout.addLayout(button_layout)
 dialog.setLayout(layout)
 
 # connect buttons
-copy_button.clicked.connect(lambda: QApplication.clipboard().setText(sql_clause))
+def copy_and_close():
+    QApplication.clipboard().setText(sql_clause)
+    dialog.accept()
+
+copy_button.clicked.connect(copy_and_close)
 ok_button.clicked.connect(dialog.accept)
 
 dialog.exec_()
