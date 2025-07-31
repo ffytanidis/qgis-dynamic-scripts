@@ -1,7 +1,8 @@
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
 from qgis.utils import iface
-from PyQt5.QtWidgets import QMessageBox, QPushButton, QApplication
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QApplication
 from PyQt5.QtGui import QClipboard
+from PyQt5.QtCore import Qt
 
 # get canvas and extent
 canvas = iface.mapCanvas()
@@ -27,20 +28,29 @@ sql_clause = (
     f"and ps.LAT between {min_lat:.7f} and {max_lat:.7f}"
 )
 
+# custom dialog with copy functionality
+dialog = QDialog()
+dialog.setWindowTitle("Visible Extent as SQL")
 
-# create the message box
-msg_box = QMessageBox()
-msg_box.setWindowTitle("Visible Extent as SQL")
-msg_box.setText(sql_clause)
+layout = QVBoxLayout()
 
-# add custom Copy button
-copy_button = msg_box.addButton("Copy", QMessageBox.ActionRole)
-msg_box.addButton(QMessageBox.Ok)
+label = QLabel(sql_clause)
+label.setTextInteractionFlags(Qt.TextSelectableByMouse)  # allow selection
+layout.addWidget(label)
 
-# show the box
-msg_box.exec_()
+# buttons
+button_layout = QHBoxLayout()
+copy_button = QPushButton("Copy")
+ok_button = QPushButton("OK")
 
-# handle Copy button
-if msg_box.clickedButton() == copy_button:
-    clipboard = QApplication.clipboard()
-    clipboard.setText(sql_clause)
+button_layout.addWidget(copy_button)
+button_layout.addWidget(ok_button)
+layout.addLayout(button_layout)
+
+dialog.setLayout(layout)
+
+# connect buttons
+copy_button.clicked.connect(lambda: QApplication.clipboard().setText(sql_clause))
+ok_button.clicked.connect(dialog.accept)
+
+dialog.exec_()
