@@ -23,7 +23,7 @@ else:
 # format SQL clause
 sql_clause = (
     f"where ps.LON between {min_lon:.7f} and {max_lon:.7f} "
-    f"\nand ps.LAT between {min_lat:.7f} and {max_lat:.7f}"
+    f"and ps.LAT between {min_lat:.7f} and {max_lat:.7f}"
 )
 
 # show in message box
