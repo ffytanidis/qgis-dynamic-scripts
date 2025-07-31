@@ -37,7 +37,7 @@ class InputDialog(QDialog):
         self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))
         self.folder_path_input.setMinimumWidth(400)
 
-        self.output_file_input = QLineEdit(self.settings.value("output_file", "output.csv"))
+        self.output_file_input = QLineEdit(self.settings.value("output_file", "box_positions.csv"))
         self.output_file_input.setMinimumWidth(400)
 
         self.speed_from_input = QLineEdit(self.settings.value("speed_from", "0"))
@@ -46,10 +46,10 @@ class InputDialog(QDialog):
         self.speed_to_input = QLineEdit(self.settings.value("speed_to", "0"))
         self.speed_to_input.setMinimumWidth(400)
 
-        self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2023-07-20 00:00"))
+        self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2025-01-01 00:00"))
         self.timestamp_start_input.setMinimumWidth(400)
 
-        self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2023-07-20 00:00"))
+        self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2025-12-31 23:59"))
         self.timestamp_end_input.setMinimumWidth(400)
 
         self.only_imo_checkbox = QCheckBox("Only Having IMO")
@@ -128,6 +128,26 @@ sql = f"""
 select ps.*, s.shipname, s.IMO, s.comfleet_groupedtype, s.type_summary, s.type_name, s.GRT, s.DWT,
     'https://www.marinetraffic.com/en/ais/details/ships/shipid:' + CAST(ps.SHIP_ID AS VARCHAR) as mt_link
 from (
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2017A].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2017B].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2018A].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2018B].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2019A].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2019B].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2020A].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2020B].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2021A].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2021B].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2022A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2022B].[dbo].[POS_ARCHIVE] with (nolock)
