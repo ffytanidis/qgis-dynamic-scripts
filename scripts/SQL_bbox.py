@@ -21,8 +21,10 @@ else:
     min_lat, max_lat = extent.yMinimum(), extent.yMaximum()
 
 # format SQL clause
-sql_clause = f"""where ps.LON between {min_lon:.7f} and {max_lon:.7f}
-and ps.LAT between {min_lat:.7f} and {max_lat:.7f}"""
+sql_clause = (
+    f"where ps.LON between {min_lon:.7f} and {max_lon:.7f} "
+    f"\nand ps.LAT between {min_lat:.7f} and {max_lat:.7f}"
+)
 
 # show in message box
 QMessageBox.information(None, "Visible Extent as SQL", sql_clause)
