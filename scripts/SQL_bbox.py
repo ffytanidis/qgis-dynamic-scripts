@@ -30,6 +30,7 @@ sql_clause = (
 
 # custom dialog with copy functionality
 dialog = QDialog()
+dialog.setModal(True)
 dialog.setWindowTitle("Visible Extent as SQL")
 
 layout = QVBoxLayout()
