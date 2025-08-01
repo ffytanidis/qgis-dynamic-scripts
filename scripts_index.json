@@ -1,34 +1,42 @@
 [
   {
     "name": "IoU",
+    "hover_text": "Compute Intersection over Union for selected geometries.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/calculate_iou.py"
   },
   {
     "name": "get_WKT",
+    "hover_text": "Show WKT (Well-Known Text) of selected geometry.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/get_WKT.py"
   },
   {
-    "name": "google_maps_link",
+    "name": "Google Maps Link",
+    "hover_text": "Open Google Maps centered on the current QGIS view.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/google_maps_link.py"
   },
   {
-    "name": "Selection_field_values_comma_sep",
+    "name": "Field Values (CSV)",
+    "hover_text": "List selected features' field values as comma-separated string.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Selection_field_values_comma_sep.py"
   },
   {
     "name": "Stats",
+    "hover_text": "Display average area of selected geometries.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Stats.py"
   },
   {
-    "name": "to_octagon",
+    "name": "To Octagon",
+    "hover_text": "Convert selected geometries to equivalent-area octagons.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/to_octagon.py"
   },
   {
-    "name": "box_positions",
+    "name": "Box Positions",
+    "hover_text": "Extract positions from rectangular bounding boxes.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/box_positions.py"
   },
   {
-    "name": "SQL_bbox",
+    "name": "SQL BBox",
+    "hover_text": "Generate SQL WHERE clause from selected extent.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/SQL_bbox.py"
   }
 ]
