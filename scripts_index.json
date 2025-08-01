@@ -16,8 +16,8 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Selection_field_values_comma_sep.py"
   },
   {
-    "name": "Selection_Stats",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Selection_Stats.py"
+    "name": "Stats",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Stats.py"
   },
   {
     "name": "to_octagon",
