@@ -1,6 +1,6 @@
 [
   {
-    "name": "calculate_iou",
+    "name": "IoU",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/calculate_iou.py"
   },
   {
