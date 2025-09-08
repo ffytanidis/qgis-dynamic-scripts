@@ -1,30 +1,80 @@
-
 # QGIS script to run parameterized SQL query on MSSQL connection and export result to CSV
 
-from qgis.PyQt.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QVBoxLayout, QFileDialog, QLabel, QCheckBox, QHBoxLayout, QApplication, QMessageBox
+from qgis.PyQt.QtWidgets import (
+    QDialog, QFormLayout, QLineEdit, QPushButton, QVBoxLayout,
+    QFileDialog, QLabel, QCheckBox, QHBoxLayout, QApplication, QMessageBox
+)
 from qgis.PyQt.QtCore import QSettings
 from qgis.core import QgsProviderRegistry, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
 from qgis.utils import iface
 import csv
 import os
 import sys
+import math
 
-# Get current canvas extent in EPSG:4326
+# ---------- geographic normalization ----------
+
+# Get current canvas extent, clamp if 3857, then transform to EPSG:4326
 canvas = iface.mapCanvas()
 extent = canvas.extent()
 crs_canvas = canvas.mapSettings().destinationCrs()
-if crs_canvas.authid() != 'EPSG:4326':
+
+WORLD_HALF = 20037508.342789244  # meters
+WORLD_W = 2 * WORLD_HALF
+
+if crs_canvas.authid() == 'EPSG:3857':
+    # Clamp to valid Web Mercator world
+    xmin_3857 = max(extent.xMinimum(),  -WORLD_HALF)
+    xmax_3857 = min(extent.xMaximum(),   WORLD_HALF)
+    ymin_3857 = max(extent.yMinimum(),  -WORLD_HALF)
+    ymax_3857 = min(extent.yMaximum(),   WORLD_HALF)
+
+    # If we've essentially got the whole world, mark as global (skip lon filter later)
+    lon_global = (xmax_3857 - xmin_3857) >= 0.99 * WORLD_W
+
     crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
     xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
-    bottom_left = xform.transform(extent.xMinimum(), extent.yMinimum())
-    top_right = xform.transform(extent.xMaximum(), extent.yMaximum())
-    min_lon, min_lat = bottom_left.x(), bottom_left.y()
-    max_lon, max_lat = top_right.x(), top_right.y()
-else:
-    min_lon, max_lon = extent.xMinimum(), extent.xMaximum()
-    min_lat, max_lat = extent.yMinimum(), extent.yMaximum()
+    bl = xform.transform(xmin_3857, ymin_3857)
+    tr = xform.transform(xmax_3857, ymax_3857)
+    min_lon_raw, min_lat_raw = bl.x(), bl.y()
+    max_lon_raw, max_lat_raw = tr.x(), tr.y()
 
-# Define input dialog
+else:
+    # Already geographic, no clamp needed
+    lon_global = False
+    min_lon_raw, max_lon_raw = extent.xMinimum(), extent.xMaximum()
+    min_lat_raw, max_lat_raw = extent.yMinimum(), extent.yMaximum()
+
+# Latitude: clamp and order
+min_lat = _clamp_lat(min_lat_raw)
+max_lat = _clamp_lat(max_lat_raw)
+if min_lat > max_lat:
+    min_lat, max_lat = max_lat, min_lat
+
+# Longitude: normalize; if global, force full range
+if lon_global:
+    min_lon, max_lon = -180.0, 180.0
+    lon_wrap = False
+else:
+    min_lon = _norm_lon(min_lon_raw)
+    max_lon = _norm_lon(max_lon_raw)
+    lon_wrap = min_lon > max_lon  # crosses the antimeridian?
+
+# Build WHERE snippets you can drop into the SQL
+if lon_global:
+    lon_clause = "1=1"  # or just omit the LON filter
+elif lon_wrap:
+    lon_clause = (
+        f"(ps.LON BETWEEN {_format_num(min_lon)} AND 180) "
+        f"OR (ps.LON BETWEEN -180 AND {_format_num(max_lon)})"
+    )
+else:
+    lon_clause = f"ps.LON BETWEEN {_format_num(min_lon)} AND {_format_num(max_lon)}"
+
+lat_clause = f"ps.LAT BETWEEN {_format_num(min_lat)} AND {_format_num(max_lat)}"
+
+# ----------------- UI Dialog -----------------
+
 class InputDialog(QDialog):
     def __init__(self):
         super().__init__()
@@ -32,28 +82,20 @@ class InputDialog(QDialog):
         self.settings = QSettings()
 
         self.conn_name_input = QLineEdit(self.settings.value("conn_name", ""))
-        self.conn_name_input.setMinimumWidth(400)
-
         self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))
-        self.folder_path_input.setMinimumWidth(400)
-
-        self.output_file_input = QLineEdit(self.settings.value("output_file", "box_positions.csv"))
-        self.output_file_input.setMinimumWidth(400)
-
+        self.output_file_input = QLineEdit(self.settings.value("output_file", "output.csv"))
         self.speed_from_input = QLineEdit(self.settings.value("speed_from", "0"))
-        self.speed_from_input.setMinimumWidth(400)
-
         self.speed_to_input = QLineEdit(self.settings.value("speed_to", "0"))
-        self.speed_to_input.setMinimumWidth(400)
-
-        self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2025-01-01 00:00"))
-        self.timestamp_start_input.setMinimumWidth(400)
-
-        self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2025-12-31 23:59"))
-        self.timestamp_end_input.setMinimumWidth(400)
+        self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2023-07-20 00:00"))
+        self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2023-07-20 00:00"))
 
         self.only_imo_checkbox = QCheckBox("Only Having IMO")
-        self.only_imo_checkbox.setChecked(self.settings.value("only_having_imo", "true") == "true")
+        self.only_imo_checkbox.setChecked(
+            str(self.settings.value("only_having_imo", "true")).lower() == "true"
+        )
+
+        # NEW: ship_ids input (comma-separated)
+        self.ship_ids_input = QLineEdit(self.settings.value("ship_ids", ""))
 
         self.select_button = QPushButton("Change Folder")
         self.select_button.clicked.connect(self.select_folder)
@@ -71,6 +113,7 @@ class InputDialog(QDialog):
         layout.addRow("Timestamp Start:", self.timestamp_start_input)
         layout.addRow("Timestamp End:", self.timestamp_end_input)
         layout.addRow(self.only_imo_checkbox)
+        layout.addRow("Ship IDs (comma-separated):", self.ship_ids_input)  # NEW
 
         self.run_button = QPushButton("Run")
         self.run_button.clicked.connect(self.accept)
@@ -100,7 +143,8 @@ class InputDialog(QDialog):
             "speed_to": self.speed_to_input.text(),
             "timestamp_start": self.timestamp_start_input.text(),
             "timestamp_end": self.timestamp_end_input.text(),
-            "only_having_imo": self.only_imo_checkbox.isChecked()
+            "only_having_imo": self.only_imo_checkbox.isChecked(),
+            "ship_ids": self.ship_ids_input.text(),  # NEW
         }
 
 # Run dialog
@@ -122,32 +166,27 @@ speed_to = values["speed_to"]
 timestamp_start = values["timestamp_start"]
 timestamp_end = values["timestamp_end"]
 only_having_imo = values["only_having_imo"]
+ship_ids_text = values["ship_ids"]  # NEW
+
+# Build optional ship_id filter
+ship_ids_clause = ""
+if ship_ids_text.strip():
+    ids = []
+    for part in ship_ids_text.split(","):
+        p = part.strip()
+        if p:
+            try:
+                ids.append(int(p))
+            except ValueError:
+                pass  # skip non-numeric entries silently
+    if ids:
+        ship_ids_clause = f"  and ps.SHIP_ID in ({','.join(str(i) for i in ids)})"
 
 # Construct SQL
 sql = f"""
 select ps.*, s.shipname, s.IMO, s.comfleet_groupedtype, s.type_summary, s.type_name, s.GRT, s.DWT,
     'https://www.marinetraffic.com/en/ais/details/ships/shipid:' + CAST(ps.SHIP_ID AS VARCHAR) as mt_link
 from (
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2017A].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2017B].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2018A].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2018B].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2019A].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2019B].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2020A].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2020B].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2021A].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2021B].[dbo].[POS_ARCHIVE] with (nolock)
-    union all
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2022A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2022B].[dbo].[POS_ARCHIVE] with (nolock)
@@ -166,11 +205,12 @@ from (
 ) as ps
 left JOIN [dbo].[V_SHIP_BATCH] as s with (nolock)
 on ps.ship_id = s.ship_id
-where ps.LON between {min_lon} and {max_lon}
-  and ps.LAT between {min_lat} and {max_lat}
+where {lon_clause}
+  and {lat_clause}
   and ps.speed between {speed_from} and {speed_to}
   and ps.TIMESTAMP between '{timestamp_start}' and '{timestamp_end}'
   {"and s.IMO > 0" if only_having_imo else ""}
+{ship_ids_clause}
 """
 
 # Connect and count rows first
@@ -189,8 +229,8 @@ reply = QMessageBox.question(None, "Confirm Export", f"Query will return {total_
 if reply != QMessageBox.Yes:
     raise Exception("Cancelled by user")
 
-# Re-run the actual query after confirmation
-results = list(conn.executeSql(sql))  # force evaluation
+# Run the actual query
+results = conn.executeSql(sql)
 
 # Explicit column names
 header = [
