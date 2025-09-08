@@ -12,25 +12,44 @@ import os
 import sys
 import math
 
-# ---------- geographic normalization ----------
+# ---------- Helpers ----------
 
-# Get current canvas extent, clamp if 3857, then transform to EPSG:4326
+def _norm_lon(lon):
+    """Normalize longitude to [-180, 180]."""
+    if math.isfinite(lon):
+        lon = ((lon + 180.0) % 360.0) - 180.0
+    return lon
+
+def _clamp_lat(lat):
+    """Clamp latitude to [-90, 90]."""
+    if math.isfinite(lat):
+        lat = max(-90.0, min(90.0, lat))
+    return lat
+
+def _format_num(x):
+    """Format numeric for SQL with reasonable precision."""
+    return f"{float(x):.6f}"
+
+# ---------- Canvas extent -> geographic window ----------
+
 canvas = iface.mapCanvas()
 extent = canvas.extent()
 crs_canvas = canvas.mapSettings().destinationCrs()
 
-WORLD_HALF = 20037508.342789244  # meters
-WORLD_W = 2 * WORLD_HALF
+WORLD_HALF_3857 = 20037508.342789244  # meters (valid Web Mercator half world)
+WORLD_W_3857 = 2 * WORLD_HALF_3857
+WEBMERC_LAT_LIMIT = 85.0511287798066  # deg
 
+# Transform extent corners to EPSG:4326, with clamping for EPSG:3857
 if crs_canvas.authid() == 'EPSG:3857':
-    # Clamp to valid Web Mercator world
-    xmin_3857 = max(extent.xMinimum(),  -WORLD_HALF)
-    xmax_3857 = min(extent.xMaximum(),   WORLD_HALF)
-    ymin_3857 = max(extent.yMinimum(),  -WORLD_HALF)
-    ymax_3857 = min(extent.yMaximum(),   WORLD_HALF)
+    # Clamp to valid 3857 world to avoid endless wrapped copies
+    xmin_3857 = max(extent.xMinimum(),  -WORLD_HALF_3857)
+    xmax_3857 = min(extent.xMaximum(),   WORLD_HALF_3857)
+    ymin_3857 = max(extent.yMinimum(),  -WORLD_HALF_3857)
+    ymax_3857 = min(extent.yMaximum(),   WORLD_HALF_3857)
 
-    # If we've essentially got the whole world, mark as global (skip lon filter later)
-    lon_global = (xmax_3857 - xmin_3857) >= 0.99 * WORLD_W
+    # Consider it "global" if width ≈ whole world
+    lon_global = (xmax_3857 - xmin_3857) >= 0.99 * WORLD_W_3857
 
     crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
     xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
@@ -39,11 +58,20 @@ if crs_canvas.authid() == 'EPSG:3857':
     min_lon_raw, min_lat_raw = bl.x(), bl.y()
     max_lon_raw, max_lat_raw = tr.x(), tr.y()
 
-else:
-    # Already geographic, no clamp needed
+elif crs_canvas.authid() == 'EPSG:4326':
     lon_global = False
     min_lon_raw, max_lon_raw = extent.xMinimum(), extent.xMaximum()
     min_lat_raw, max_lat_raw = extent.yMinimum(), extent.yMaximum()
+
+else:
+    # Other projected CRS: just transform without clamping
+    lon_global = False
+    crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
+    xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
+    bl = xform.transform(extent.xMinimum(), extent.yMinimum())
+    tr = xform.transform(extent.xMaximum(), extent.yMaximum())
+    min_lon_raw, min_lat_raw = bl.x(), bl.y()
+    max_lon_raw, max_lat_raw = tr.x(), tr.y()
 
 # Latitude: clamp and order
 min_lat = _clamp_lat(min_lat_raw)
@@ -51,18 +79,27 @@ max_lat = _clamp_lat(max_lat_raw)
 if min_lat > max_lat:
     min_lat, max_lat = max_lat, min_lat
 
-# Longitude: normalize; if global, force full range
+# If we're effectively global (or clearly at 3857's pole limits), expand latitude to full globe
+lat_global = lon_global or (
+    crs_canvas.authid() == 'EPSG:3857'
+    and abs(min_lat + WEBMERC_LAT_LIMIT) < 0.05
+    and abs(max_lat - WEBMERC_LAT_LIMIT) < 0.05
+)
+if lat_global:
+    min_lat, max_lat = -90.0, 90.0
+
+# Longitude: normalize; if global, force full range, else detect wrap
 if lon_global:
     min_lon, max_lon = -180.0, 180.0
     lon_wrap = False
 else:
     min_lon = _norm_lon(min_lon_raw)
     max_lon = _norm_lon(max_lon_raw)
-    lon_wrap = min_lon > max_lon  # crosses the antimeridian?
+    lon_wrap = min_lon > max_lon  # indicates interval crosses antimeridian
 
-# Build WHERE snippets you can drop into the SQL
+# Build WHERE snippets
 if lon_global:
-    lon_clause = "1=1"  # or just omit the LON filter
+    lon_clause = "1=1"
 elif lon_wrap:
     lon_clause = (
         f"(ps.LON BETWEEN {_format_num(min_lon)} AND 180) "
@@ -71,9 +108,12 @@ elif lon_wrap:
 else:
     lon_clause = f"ps.LON BETWEEN {_format_num(min_lon)} AND {_format_num(max_lon)}"
 
-lat_clause = f"ps.LAT BETWEEN {_format_num(min_lat)} AND {_format_num(max_lat)}"
+if lat_global:
+    lat_clause = "1=1"  # or f"ps.LAT BETWEEN {-90} AND {90}"
+else:
+    lat_clause = f"ps.LAT BETWEEN {_format_num(min_lat)} AND {_format_num(max_lat)}"
 
-# ----------------- UI Dialog -----------------
+# ---------- UI Dialog ----------
 
 class InputDialog(QDialog):
     def __init__(self):
@@ -88,13 +128,9 @@ class InputDialog(QDialog):
         self.speed_to_input = QLineEdit(self.settings.value("speed_to", "0"))
         self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2023-07-20 00:00"))
         self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2023-07-20 00:00"))
-
         self.only_imo_checkbox = QCheckBox("Only Having IMO")
-        self.only_imo_checkbox.setChecked(
-            str(self.settings.value("only_having_imo", "true")).lower() == "true"
-        )
-
-        # NEW: ship_ids input (comma-separated)
+        self.only_imo_checkbox.setChecked(str(self.settings.value("only_having_imo", "true")).lower() == "true")
+        # Optional: ship_ids (comma-separated)
         self.ship_ids_input = QLineEdit(self.settings.value("ship_ids", ""))
 
         self.select_button = QPushButton("Change Folder")
@@ -113,7 +149,7 @@ class InputDialog(QDialog):
         layout.addRow("Timestamp Start:", self.timestamp_start_input)
         layout.addRow("Timestamp End:", self.timestamp_end_input)
         layout.addRow(self.only_imo_checkbox)
-        layout.addRow("Ship IDs (comma-separated):", self.ship_ids_input)  # NEW
+        layout.addRow("Ship IDs (comma-separated):", self.ship_ids_input)
 
         self.run_button = QPushButton("Run")
         self.run_button.clicked.connect(self.accept)
@@ -144,10 +180,11 @@ class InputDialog(QDialog):
             "timestamp_start": self.timestamp_start_input.text(),
             "timestamp_end": self.timestamp_end_input.text(),
             "only_having_imo": self.only_imo_checkbox.isChecked(),
-            "ship_ids": self.ship_ids_input.text(),  # NEW
+            "ship_ids": self.ship_ids_input.text(),
         }
 
-# Run dialog
+# ---------- Run dialog ----------
+
 app = QApplication.instance() or QApplication(sys.argv)
 dialog = InputDialog()
 if not dialog.exec_():
@@ -166,9 +203,9 @@ speed_to = values["speed_to"]
 timestamp_start = values["timestamp_start"]
 timestamp_end = values["timestamp_end"]
 only_having_imo = values["only_having_imo"]
-ship_ids_text = values["ship_ids"]  # NEW
+ship_ids_text = values["ship_ids"]
 
-# Build optional ship_id filter
+# Optional ship_id filter
 ship_ids_clause = ""
 if ship_ids_text.strip():
     ids = []
@@ -182,7 +219,8 @@ if ship_ids_text.strip():
     if ids:
         ship_ids_clause = f"  and ps.SHIP_ID in ({','.join(str(i) for i in ids)})"
 
-# Construct SQL
+# ---------- SQL ----------
+
 sql = f"""
 select ps.*, s.shipname, s.IMO, s.comfleet_groupedtype, s.type_summary, s.type_name, s.GRT, s.DWT,
     'https://www.marinetraffic.com/en/ais/details/ships/shipid:' + CAST(ps.SHIP_ID AS VARCHAR) as mt_link
@@ -203,8 +241,8 @@ from (
     union all
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2025B].[dbo].[POS_ARCHIVE] with (nolock)
 ) as ps
-left JOIN [dbo].[V_SHIP_BATCH] as s with (nolock)
-on ps.ship_id = s.ship_id
+left join [dbo].[V_SHIP_BATCH] as s with (nolock)
+    on ps.ship_id = s.ship_id
 where {lon_clause}
   and {lat_clause}
   and ps.speed between {speed_from} and {speed_to}
@@ -213,19 +251,25 @@ where {lon_clause}
 {ship_ids_clause}
 """
 
-# Connect and count rows first
+# ---------- Execute ----------
+
 md = QgsProviderRegistry.instance().providerMetadata("mssql")
 conn_metadata = md.findConnection(conn_name)
 if not conn_metadata:
     raise Exception(f"Connection '{conn_name}' not found")
 
 conn = md.createConnection(conn_metadata.uri(), {})
+
+# Count first
 count_sql = f"select count(*) from ({sql}) as subquery"
 count_result = conn.executeSql(count_sql)
 total_count = count_result[0][0] if count_result else 0
 
-# Ask user to confirm
-reply = QMessageBox.question(None, "Confirm Export", f"Query will return {total_count} rows. Continue?", QMessageBox.Yes | QMessageBox.No)
+reply = QMessageBox.question(
+    None, "Confirm Export",
+    f"Query will return {total_count} rows. Continue?",
+    QMessageBox.Yes | QMessageBox.No
+)
 if reply != QMessageBox.Yes:
     raise Exception("Cancelled by user")
 
@@ -239,6 +283,7 @@ header = [
     "type_name", "GRT", "DWT", "mt_link"
 ]
 
+# Write CSV
 output_path = os.path.join(folder, output_file)
 with open(output_path, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
