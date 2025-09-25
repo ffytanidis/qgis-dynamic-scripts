@@ -38,5 +38,11 @@
     "name": "SQL BBox",
     "hover_text": "Generate SQL WHERE clause from selected extent.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/SQL_bbox.py"
+  },
+  {
+    "name": "Buffer",
+    "hover_text": "Buffer selected geometries with precision in meters",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/buffer.py"
   }
 ]
+
