@@ -4,23 +4,26 @@ Selection_Stats
 ➤ Displays the average area of the selected geometries (in square meters).
 
 Selection_field_values_comma_sep
-➤ Prompts for a field name, then lists its values from selected features, comma-separated.
+➤ Prompts for a field name, then lists its values from selected features, comma-separated, nulls excluded.
 
 calculate_iou
 ➤ Calculates and shows the Intersection over Union (IoU) of selected geometries.
 ➤ Works across different layers.
 
 get_WKT
-➤ Shows the Well-Known Text (WKT) of the first selected geometry.
+➤ Shows the Well-Known Text (WKT) of the selected geometry.
 
 google_maps_link
 ➤ Opens Google Maps in your browser at the center of the current QGIS view.
 
 to_octagon
-➤ Converts selected geometries to octagons with the same area and centroid.
+➤ Converts selected geometries to octagons with the same area and centroid. Warning: multi-parts are merged to one
 
 SQL_bbox
 ➤ Generate a SQL-style bounding box filter (WHERE ps.LON ... AND ps.LAT ...) based on the visible map extent in QGIS, always in EPSG:4326 (WGS84), regardless of current canvas CRS.
 
 box_positions
 ➤ Runs a parameterized SQL query on a MSSQL database connection and exports the result to a CSV file, to be loaded as layer.
+
+Buffer
+➤ Buffers the selected geometries by given meters.
