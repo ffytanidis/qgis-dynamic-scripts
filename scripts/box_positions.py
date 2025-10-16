@@ -1,10 +1,8 @@
-# QGIS script to run parameterized SQL query on MSSQL connection and export result to CSV
-
-from qgis.PyQt.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QPushButton, QVBoxLayout,
-    QFileDialog, QLabel, QCheckBox, QHBoxLayout, QApplication, QMessageBox
-)
 from qgis.PyQt.QtCore import QSettings
+from qgis.PyQt.QtWidgets import (
+    QApplication, QDialog, QLineEdit, QCheckBox, QPushButton, QHBoxLayout,
+    QFormLayout, QLabel, QVBoxLayout, QFileDialog, QMessageBox
+)
 from qgis.core import QgsProviderRegistry, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
 from qgis.utils import iface
 import csv
@@ -109,7 +107,7 @@ else:
     lon_clause = f"ps.LON BETWEEN {_format_num(min_lon)} AND {_format_num(max_lon)}"
 
 if lat_global:
-    lat_clause = "1=1"  # or f"ps.LAT BETWEEN {-90} AND {90}"
+    lat_clause = "1=1"
 else:
     lat_clause = f"ps.LAT BETWEEN {_format_num(min_lat)} AND {_format_num(max_lat)}"
 
@@ -205,6 +203,10 @@ timestamp_end = values["timestamp_end"]
 only_having_imo = values["only_having_imo"]
 ship_ids_text = values["ship_ids"]
 
+# Ensure folder exists
+if folder and not os.path.isdir(folder):
+    os.makedirs(folder, exist_ok=True)
+
 # Optional ship_id filter
 ship_ids_clause = ""
 if ship_ids_text.strip():
@@ -260,21 +262,23 @@ if not conn_metadata:
 
 conn = md.createConnection(conn_metadata.uri(), {})
 
-# Count first
-count_sql = f"select count(*) from ({sql}) as subquery"
-count_result = conn.executeSql(count_sql)
-total_count = count_result[0][0] if count_result else 0
+# Run the actual query first
+results = conn.executeSql(sql)
+
+# Count results and ask user whether to save
+total_count = len(results) if results else 0
+
+if total_count == 0:
+    QMessageBox.information(None, "No Results", "The query returned 0 rows. Nothing to save.")
+    raise Exception("No rows returned")
 
 reply = QMessageBox.question(
-    None, "Confirm Export",
-    f"Query will return {total_count} rows. Continue?",
+    None, "Confirm Save",
+    f"Query returned {total_count} rows.\nDo you want to save them to CSV?",
     QMessageBox.Yes | QMessageBox.No
 )
 if reply != QMessageBox.Yes:
     raise Exception("Cancelled by user")
-
-# Run the actual query
-results = conn.executeSql(sql)
 
 # Explicit column names
 header = [
