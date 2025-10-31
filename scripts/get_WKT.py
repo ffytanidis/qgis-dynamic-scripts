@@ -1,5 +1,5 @@
 # Paste into the QGIS Python Console
-from qgis.PyQt import QtWidgets, QtGui
+from qgis.PyQt import QtWidgets, QtGui, QtCore
 
 def show_selected_geom_wkt():
     layer = iface.activeLayer()
@@ -56,3 +56,4 @@ def show_selected_geom_wkt():
     dlg.exec_()
 
 show_selected_geom_wkt()
+
