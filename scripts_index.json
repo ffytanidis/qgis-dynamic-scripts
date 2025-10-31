@@ -10,6 +10,11 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/get_WKT.py"
   },
   {
+    "name": "import_WKT",
+    "hover_text": "Import geometry from wkt",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/import_wkt.py"
+  },
+  {
     "name": "Google Maps Link",
     "hover_text": "Open Google Maps centered on the current QGIS view.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/google_maps_link.py"
@@ -45,4 +50,5 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/buffer.py"
   }
 ]
+
 
