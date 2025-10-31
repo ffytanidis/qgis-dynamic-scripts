@@ -13,6 +13,9 @@ calculate_iou
 get_WKT
 ➤ Shows the Well-Known Text (WKT) of the selected geometry.
 
+import_WKT
+➤ Paste a WKT and see it imported on selected editable layer (safe, as it is not saved)
+
 google_maps_link
 ➤ Opens Google Maps in your browser at the center of the current QGIS view.
 
@@ -27,3 +30,4 @@ box_positions
 
 Buffer
 ➤ Buffers the selected geometries by given meters.
+
