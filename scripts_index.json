@@ -11,7 +11,7 @@
   },
   {
     "name": "import_WKT",
-    "hover_text": "Import geometry from wkt",
+    "hover_text": "Select one editable feature and paste WKT to replace its geometry (edit buffer only)",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/import_wkt.py"
   },
   {
@@ -50,5 +50,6 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/buffer.py"
   }
 ]
+
 
 
