@@ -31,4 +31,5 @@ box_positions
 Buffer
 ➤ Buffers the selected geometries by given meters.
 
-
+Geodesic Densification
+➤Densifies the selected geometries along geodesic lines by adding the minimum required number of evenly distributed vertices to each edge, so that all resulting segments are shorter than the specified maximum geodesic distance.
