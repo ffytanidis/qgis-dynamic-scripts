@@ -50,11 +50,12 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/buffer.py"
   },
   {
-    "name": "Geodetic Densification",
+    "name": "Geodesic Densification",
     "hover_text": "Densifies the selected geometries along geodesic lines",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/geodesic_densification.py"
   }
 ]
+
 
 
 
