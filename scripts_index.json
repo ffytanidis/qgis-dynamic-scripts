@@ -53,13 +53,9 @@
     "name": "Geodesic Densification",
     "hover_text": "Densifies the selected geometries along geodesic lines",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/geodesic_densification.py"
-  },
-  {
-    "name": "Antimeridian Snap",
-    "hover_text": "Snaps horizontally the vertices of outer rings of the selected geometries, that are close to anti-meridian line within provided tolerance in degrees",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/snap_to_antimeridian.py"
   }
 ]
+
 
 
 
