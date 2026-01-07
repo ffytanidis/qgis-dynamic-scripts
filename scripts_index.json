@@ -50,9 +50,9 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/buffer.py"
   },
   {
-    "name": "Geodesic Densification",
-    "hover_text": "Densifies the selected geometries along geodesic lines",
-    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/geodesic_densification.py"
+    "name": "Densification",
+    "hover_text": "Densifies geometries by adding the minimum number of evenly spaced vertices to edges longer than a specified maximum length, with distances and interpolation performed in EPSG:3857",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Densification.py"
   },
   {
     "name": "Anti-meridian Snap",
@@ -60,6 +60,7 @@
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/snap_to_antimeridian.py"
   }
 ]
+
 
 
 
