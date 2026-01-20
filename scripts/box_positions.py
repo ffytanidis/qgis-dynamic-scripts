@@ -242,6 +242,8 @@ from (
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2025A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
     select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2025B].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2026A].[dbo].[POS_ARCHIVE] with (nolock)
 ) as ps
 left join [dbo].[V_SHIP_BATCH] as s with (nolock)
     on ps.ship_id = s.ship_id
@@ -297,3 +299,4 @@ with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer.writerow(row)
 
 print(f"✅ Query executed and saved to {output_path}")
+
