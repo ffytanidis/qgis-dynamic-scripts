@@ -4,7 +4,7 @@ from qgis.PyQt.QtWidgets import QInputDialog, QProgressBar, QMessageBox
 from qgis.PyQt.QtCore import QVariant
 from qgis.core import (
     QgsWkbTypes, QgsGeometry, QgsPointXY, QgsSpatialIndex, QgsFeature, QgsRectangle,
-    QgsVectorLayer, QgsField, QgsFields, Qgis
+    QgsVectorLayer, QgsField, Qgis
 )
 from qgis.utils import iface
 
@@ -18,10 +18,11 @@ msg_warn = lambda t, d=6: _msg("Warning", t, Qgis.Warning, d)
 msg_err  = lambda t, d=8: _msg("Error",   t, Qgis.Critical, d)
 
 # ---- settings ----
+# We use 6-decimal rounding for "tolerance on the 6th decimal"
 DECIMALS = 6
 EPS = 1e-12
 
-def r4(v): return round(v, DECIMALS)
+def rN(v): return round(v, DECIMALS)
 
 def rect_expand(xmin, ymin, xmax, ymax, tol):
     return QgsRectangle(xmin - tol, ymin - tol, xmax + tol, ymax + tol)
@@ -51,7 +52,7 @@ def ensure_closed(r):
     return r if ring_is_closed(r) else (r + [r[0]] if r else r)
 
 def ring_vertices_set(ring):
-    return {(r4(p.x()), r4(p.y())) for p in ring}
+    return {(rN(p.x()), rN(p.y())) for p in ring}
 
 def count_segments_in_geom(g):
     if g.isEmpty() or g.type() != QgsWkbTypes.PolygonGeometry:
@@ -69,7 +70,7 @@ def count_segments_in_geom(g):
 
 def collect_target_vertices(ids, geoms_by_id, tol_bar=None):
     """
-    Target = all vertices rounded to 4 decimals + deduplicated.
+    Target = all vertices rounded to DECIMALS + deduplicated.
     Returns: (target_index, id_to_xy, n_targets)
     """
     idx = QgsSpatialIndex()
@@ -77,14 +78,13 @@ def collect_target_vertices(ids, geoms_by_id, tol_bar=None):
     seen = set()
     fid = 1
 
-    # Optional progress updates
     done = 0
     UI_EVERY = 2000
 
     for gid in ids:
         g = geoms_by_id[gid]
         for v in g.vertices():
-            xy = (r4(v.x()), r4(v.y()))
+            xy = (rN(v.x()), rN(v.y()))
             if xy in seen:
                 continue
             seen.add(xy)
@@ -133,7 +133,7 @@ def node_ring_to_targets(ring, tol, target_index, id_to_xy):
                 continue
             if t <= EPS or t >= 1.0 - EPS:
                 continue
-            key = (r4(qx), r4(qy))
+            key = (rN(qx), rN(qy))
             if key in vset:
                 continue
             seg_inserts.append((t, qx, qy))
@@ -142,7 +142,7 @@ def node_ring_to_targets(ring, tol, target_index, id_to_xy):
             seen_seg = set()
             uniq = []
             for t, qx, qy in sorted(seg_inserts, key=lambda z: z[0]):
-                key = (r4(qx), r4(qy))
+                key = (rN(qx), rN(qy))
                 if key in seen_seg:
                     continue
                 seen_seg.add(key)
@@ -159,7 +159,7 @@ def node_ring_to_targets(ring, tol, target_index, id_to_xy):
         if i in inserts_by_seg:
             for _, qx, qy in inserts_by_seg[i]:
                 out.append(QgsPointXY(qx, qy))
-                vset.add((r4(qx), r4(qy)))
+                vset.add((rN(qx), rN(qy)))
                 changed = True
     out.append(ring[-1])
     return ensure_closed(out), changed
@@ -207,6 +207,68 @@ def push_stage_progress(stage_i, stage_n, label, maximum):
     msg.layout().addWidget(pb)
     handle = bar.pushWidget(msg, Qgis.Info)
     return handle, pb
+
+# ---- FINAL CLEANUP: remove consecutive duplicate coords (6-decimal) ----
+def xy_key_6(p):
+    return (round(p.x(), DECIMALS), round(p.y(), DECIMALS))
+
+def clean_ring_dupes_6(ring):
+    """
+    Remove consecutive duplicate vertices using 6-decimal rounding.
+    Keeps ring closed. Returns (new_ring, changed).
+    """
+    ring = ensure_closed(ring)
+    if len(ring) < 2:
+        return ring, False
+
+    out = []
+    prev_key = None
+    changed = False
+
+    for p in ring:
+        k = xy_key_6(p)
+        if prev_key is not None and k == prev_key:
+            changed = True
+            continue
+        out.append(p)
+        prev_key = k
+
+    out = ensure_closed(out)
+
+    # Avoid collapsing into an invalid ring (need at least 4 pts incl closure)
+    if len(out) < 4:
+        return ring, False
+
+    return out, changed
+
+def clean_polygon_geom_dupes_6(g):
+    """
+    Cleans all rings in polygon/multipolygon geometry by removing consecutive duplicates.
+    Returns (new_geom, changed).
+    """
+    if (not g) or g.isEmpty() or g.type() != QgsWkbTypes.PolygonGeometry:
+        return g, False
+
+    polys = g.asMultiPolygon() if g.isMultipart() else [g.asPolygon()]
+    new_mp = []
+    changed_any = False
+
+    for poly in polys:
+        if not poly:
+            continue
+
+        ext, ch = clean_ring_dupes_6(poly[0])
+        changed_any |= ch
+
+        holes = []
+        for h in poly[1:]:
+            hh, chh = clean_ring_dupes_6(h)
+            changed_any |= chh
+            holes.append(hh)
+
+        new_mp.append([ext] + holes)
+
+    return QgsGeometry.fromMultiPolygonXY(new_mp), changed_any
 
 # ---- MAIN ----
 handles = []  # store progress widgets so we can pop them at the end
@@ -270,10 +332,10 @@ try:
         msg_warn("Tolerance is 0. No changes were made.")
         raise SystemExit
 
-    STAGES = 3
+    STAGES = 4
 
     # ---- Stage 1: Build target vertex collection (rounded+dedup + spatial index) ----
-    h1, pb1 = push_stage_progress(1, STAGES, "Build target vertices (4 decimals, dedup)", maximum=len(ids))
+    h1, pb1 = push_stage_progress(1, STAGES, f"Build target vertices ({DECIMALS} decimals, dedup)", maximum=len(ids))
     handles.append(h1)
 
     target_index, id_to_xy, n_targets = collect_target_vertices(ids, geoms, tol_bar=pb1)
@@ -375,9 +437,30 @@ try:
 
     pb3.setValue(len(ids))
 
+    # ---- Stage 4: Remove duplicate consecutive vertices (6-decimal rounding) ----
+    h4, pb4 = push_stage_progress(4, STAGES, f"Remove duplicate vertices ({DECIMALS} decimals)", maximum=len(ids))
+    handles.append(h4)
+
+    cleaned = 0
+    layer.beginEditCommand(f"Remove duplicate vertices ({DECIMALS} decimals)")
+    try:
+        for i, fid in enumerate(ids, start=1):
+            g = layer.getFeature(fid).geometry()
+            ng, ch = clean_polygon_geom_dupes_6(g)
+            if ch:
+                layer.changeGeometry(fid, ng)
+                cleaned += 1
+            pb4.setValue(i)
+    finally:
+        layer.endEditCommand()
+        layer.triggerRepaint()
+
+    pb4.setValue(len(ids))
+
     msg_ok(
         f"Finished. Targets: {n_targets}. "
         f"Noded features: {len(touched)}. Snapped features: {changed_snap}. "
+        f"Cleaned (removed dup consecutive vertices): {cleaned}. "
         f"Skipped: {skipped}. Edits are NOT saved."
     )
 
@@ -386,10 +469,8 @@ except SystemExit:
 except Exception as e:
     msg_err(f"Unexpected error: {e}")
 finally:
-    # keep the progress bars visible briefly? (we'll remove immediately to keep clean)
     for h in handles:
         try:
             bar.popWidget(h)
         except Exception:
             pass
-
