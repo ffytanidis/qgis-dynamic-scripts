@@ -58,16 +58,10 @@
     "name": "Anti-meridian Snap",
     "hover_text": "Snaps horizontally the vertices of outer rings of the selected geometries, that are close to anti-meridian line within provided tolerance in degrees",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/snap_to_antimeridian.py"
+  },
+  {
+    "name": "Simplification",
+    "hover_text": "Simplifies geometries using the Douglas–Peucker algorithm, removing vertices within a specified distance tolerance (meters) measured in EPSG:3857.",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Simplification.py"
   }
 ]
-
-
-
-
-
-
-
-
-
-
-
