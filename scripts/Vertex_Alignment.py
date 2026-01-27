@@ -18,7 +18,7 @@ msg_warn = lambda t, d=6: _msg("Warning", t, Qgis.Warning, d)
 msg_err  = lambda t, d=8: _msg("Error",   t, Qgis.Critical, d)
 
 # ---- settings ----
-DECIMALS = 4
+DECIMALS = 6
 EPS = 1e-12
 
 def r4(v): return round(v, DECIMALS)
@@ -392,3 +392,4 @@ finally:
             bar.popWidget(h)
         except Exception:
             pass
+
