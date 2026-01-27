@@ -63,5 +63,10 @@
     "name": "Simplification",
     "hover_text": "Simplifies geometries using the Douglas–Peucker algorithm, removing vertices within a specified distance tolerance (meters) measured in EPSG:3857.",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Simplification.py"
+  },
+  {
+    "name": "Vertex Alignment",
+    "hover_text": "Aligns polygon boundaries by noding edges near existing vertices and snapping geometries to a shared vertex set derived from rounded coordinates, using a distance tolerance (EPSG:4326)",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Vertex_Alignment.py"
   }
 ]
