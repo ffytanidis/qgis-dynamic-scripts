@@ -290,6 +290,11 @@ conn = md.createConnection(conn_metadata.uri(), {})
 # Run the actual query first
 results = conn.executeSql(sql)
 
+print("first row:", results[0])
+print("types:", [type(v) for v in results[0]])
+print("speed value:", results[0][4], "type:", type(results[0][4]))
+
+
 # Count results and ask user whether to save
 total_count = len(results) if results else 0
 
@@ -322,5 +327,6 @@ with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer.writerow(row)
 
 print(f"✅ Query executed and saved to {output_path}")
+
 
 
