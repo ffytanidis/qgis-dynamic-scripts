@@ -230,8 +230,8 @@ select
     ps.LAT,
     ps.[TIMESTAMP],
     CAST(ps.SPEED AS INT) AS SPEED,
-    ps.COURSE,
-    ps.HEADING,
+    CAST(ps.COURSE AS INT) AS COURSE,
+    CAST(ps.HEADING AS INT) AS HEADING,
     s.shipname,
     s.IMO,
     s.comfleet_groupedtype,
@@ -322,6 +322,7 @@ with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer.writerow(row)
 
 print(f"✅ Query executed and saved to {output_path}")
+
 
 
 
