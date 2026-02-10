@@ -224,33 +224,56 @@ if ship_ids_text.strip():
 # ---------- SQL ----------
 
 sql = f"""
-select ps.*, s.shipname, s.IMO, s.comfleet_groupedtype, s.type_summary, s.type_name, s.GRT, s.DWT,
+select
+    ps.SHIP_ID,
+    ps.LON,
+    ps.LAT,
+    ps.[TIMESTAMP],
+    CAST(ps.SPEED AS INT) AS SPEED,
+    ps.COURSE,
+    ps.HEADING,
+    s.shipname,
+    s.IMO,
+    s.comfleet_groupedtype,
+    s.type_summary,
+    s.type_name,
+    s.GRT,
+    s.DWT,
     'https://www.marinetraffic.com/en/ais/details/ships/shipid:' + CAST(ps.SHIP_ID AS VARCHAR) as mt_link
 from (
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2022A].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2022A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2022B].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2022B].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2023A].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2023A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2023B].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2023B].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2024A].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2024A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2024B].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2024B].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2025A].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2025A].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2025B].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2025B].[dbo].[POS_ARCHIVE] with (nolock)
     union all
-    select SHIP_ID, LON, LAT, TIMESTAMP, SPEED, COURSE, HEADING from [ais_archive_2026A].[dbo].[POS_ARCHIVE] with (nolock)
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2026A].[dbo].[POS_ARCHIVE] with (nolock)
 ) as ps
 left join [dbo].[V_SHIP_BATCH] as s with (nolock)
     on ps.ship_id = s.ship_id
 where {lon_clause}
   and {lat_clause}
-  and ps.speed between {speed_from} and {speed_to}
-  and ps.TIMESTAMP between '{timestamp_start}' and '{timestamp_end}'
+  and CAST(ps.SPEED AS INT) between {speed_from} and {speed_to}
+  and ps.[TIMESTAMP] between '{timestamp_start}' and '{timestamp_end}'
   {"and s.IMO > 0" if only_having_imo else ""}
 {ship_ids_clause}
 """
@@ -299,4 +322,5 @@ with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer.writerow(row)
 
 print(f"✅ Query executed and saved to {output_path}")
+
 
