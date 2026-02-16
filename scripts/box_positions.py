@@ -1,16 +1,45 @@
-from qgis.PyQt.QtCore import QSettings
+from qgis.PyQt.QtCore import QSettings, QVariant
 from qgis.PyQt.QtWidgets import (
     QApplication, QDialog, QLineEdit, QCheckBox, QPushButton, QHBoxLayout,
     QFormLayout, QLabel, QVBoxLayout, QFileDialog, QMessageBox
 )
-from qgis.core import QgsProviderRegistry, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
+from qgis.PyQt.QtGui import QColor
+from qgis.core import (
+    QgsProviderRegistry,
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
+    QgsProject,
+    QgsVectorLayer,
+    QgsFields,
+    QgsField,
+    QgsFeature,
+    QgsGeometry,
+    QgsPointXY,
+    QgsCategorizedSymbolRenderer,
+    QgsRendererCategory,
+    QgsMarkerSymbol,
+)
 from qgis.utils import iface
+from qgis.core import Qgis  # for message bar levels
 import csv
 import os
 import sys
 import math
 
-# ---------- Helpers ----------
+# =========================================================
+# ----------------------- Helpers -------------------------
+# =========================================================
+
+def _msg(level, text, title="MT Box"):
+    """
+    Show a QGIS message bar message.
+    level: Qgis.Info / Qgis.Warning / Qgis.Critical / Qgis.Success
+    """
+    try:
+        iface.messageBar().pushMessage(title, text, level=level, duration=6)
+    except Exception:
+        # Fallback if messageBar not available for any reason
+        print(f"[{title}] {text}")
 
 def _norm_lon(lon):
     """Normalize longitude to [-180, 180]."""
@@ -28,90 +57,182 @@ def _format_num(x):
     """Format numeric for SQL with reasonable precision."""
     return f"{float(x):.6f}"
 
-# ---------- Canvas extent -> geographic window ----------
+def _parse_rgb(rgb_text):
+    """Parse 'rgb( 160, 204, 114 )' -> QColor."""
+    if not rgb_text:
+        return QColor(201, 201, 201)
+    s = rgb_text.strip().lower()
+    if s.startswith("rgb"):
+        inside = s[s.find("(") + 1:s.find(")")]
+        parts = [p.strip() for p in inside.split(",")]
+        if len(parts) >= 3:
+            try:
+                r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
+                return QColor(r, g, b)
+            except Exception:
+                pass
+    return QColor(201, 201, 201)
 
-canvas = iface.mapCanvas()
-extent = canvas.extent()
-crs_canvas = canvas.mapSettings().destinationCrs()
+def _mk_marker_symbol(color: QColor, size_mm=2.4, outline_color=QColor(0, 0, 0), outline_mm=0.1):
+    sym = QgsMarkerSymbol.createSimple({})
+    sym.setColor(color)
+    sym.setSize(size_mm)
+    try:
+        sym.symbolLayer(0).setStrokeColor(outline_color)
+        sym.symbolLayer(0).setStrokeWidth(outline_mm)
+    except Exception:
+        pass
+    return sym
 
-WORLD_HALF_3857 = 20037508.342789244  # meters (valid Web Mercator half world)
-WORLD_W_3857 = 2 * WORLD_HALF_3857
-WEBMERC_LAT_LIMIT = 85.0511287798066  # deg
+# --- QVariant-safe conversions ---
 
-# Transform extent corners to EPSG:4326, with clamping for EPSG:3857
-if crs_canvas.authid() == 'EPSG:3857':
-    # Clamp to valid 3857 world to avoid endless wrapped copies
-    xmin_3857 = max(extent.xMinimum(),  -WORLD_HALF_3857)
-    xmax_3857 = min(extent.xMaximum(),   WORLD_HALF_3857)
-    ymin_3857 = max(extent.yMinimum(),  -WORLD_HALF_3857)
-    ymax_3857 = min(extent.yMaximum(),   WORLD_HALF_3857)
+def _qv_to_py(v):
+    try:
+        if isinstance(v, QVariant):
+            return v
+    except Exception:
+        pass
+    return v
 
-    # Consider it "global" if width ≈ whole world
-    lon_global = (xmax_3857 - xmin_3857) >= 0.99 * WORLD_W_3857
+def _to_str(v):
+    if v is None:
+        return ""
+    v = _qv_to_py(v)
+    try:
+        if isinstance(v, QVariant):
+            return v.toString()
+    except Exception:
+        pass
+    return str(v)
 
-    crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
-    xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
-    bl = xform.transform(xmin_3857, ymin_3857)
-    tr = xform.transform(xmax_3857, ymax_3857)
-    min_lon_raw, min_lat_raw = bl.x(), bl.y()
-    max_lon_raw, max_lat_raw = tr.x(), tr.y()
+def _to_float(v):
+    if v is None:
+        return None
+    v = _qv_to_py(v)
+    try:
+        if isinstance(v, QVariant):
+            d, ok = v.toDouble()
+            return float(d) if ok else None
+    except Exception:
+        pass
+    try:
+        return float(v)
+    except Exception:
+        return None
 
-elif crs_canvas.authid() == 'EPSG:4326':
-    lon_global = False
-    min_lon_raw, max_lon_raw = extent.xMinimum(), extent.xMaximum()
-    min_lat_raw, max_lat_raw = extent.yMinimum(), extent.yMaximum()
+def _to_int(v):
+    if v is None:
+        return None
+    v = _qv_to_py(v)
+    try:
+        if isinstance(v, QVariant):
+            i, ok = v.toInt()
+            return int(i) if ok else None
+    except Exception:
+        pass
+    try:
+        return int(float(v))
+    except Exception:
+        return None
 
-else:
-    # Other projected CRS: just transform without clamping
-    lon_global = False
-    crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
-    xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
-    bl = xform.transform(extent.xMinimum(), extent.yMinimum())
-    tr = xform.transform(extent.xMaximum(), extent.yMaximum())
-    min_lon_raw, min_lat_raw = bl.x(), bl.y()
-    max_lon_raw, max_lat_raw = tr.x(), tr.y()
+def _to_long(v):
+    if v is None:
+        return None
+    v = _qv_to_py(v)
+    try:
+        if isinstance(v, QVariant):
+            i, ok = v.toLongLong()
+            return int(i) if ok else None
+    except Exception:
+        pass
+    return _to_int(v)
 
-# Latitude: clamp and order
-min_lat = _clamp_lat(min_lat_raw)
-max_lat = _clamp_lat(max_lat_raw)
-if min_lat > max_lat:
-    min_lat, max_lat = max_lat, min_lat
+# =========================================================
+# ------------ Canvas extent -> geographic window ----------
+# =========================================================
 
-# If we're effectively global (or clearly at 3857's pole limits), expand latitude to full globe
-lat_global = lon_global or (
-    crs_canvas.authid() == 'EPSG:3857'
-    and abs(min_lat + WEBMERC_LAT_LIMIT) < 0.05
-    and abs(max_lat - WEBMERC_LAT_LIMIT) < 0.05
-)
-if lat_global:
-    min_lat, max_lat = -90.0, 90.0
+try:
+    canvas = iface.mapCanvas()
+    extent = canvas.extent()
+    crs_canvas = canvas.mapSettings().destinationCrs()
 
-# Longitude: normalize; if global, force full range, else detect wrap
-if lon_global:
-    min_lon, max_lon = -180.0, 180.0
-    lon_wrap = False
-else:
-    min_lon = _norm_lon(min_lon_raw)
-    max_lon = _norm_lon(max_lon_raw)
-    lon_wrap = min_lon > max_lon  # indicates interval crosses antimeridian
+    WORLD_HALF_3857 = 20037508.342789244
+    WORLD_W_3857 = 2 * WORLD_HALF_3857
+    WEBMERC_LAT_LIMIT = 85.0511287798066
 
-# Build WHERE snippets
-if lon_global:
-    lon_clause = "1=1"
-elif lon_wrap:
-    lon_clause = (
-        f"(ps.LON BETWEEN {_format_num(min_lon)} AND 180) "
-        f"OR (ps.LON BETWEEN -180 AND {_format_num(max_lon)})"
+    if crs_canvas.authid() == 'EPSG:3857':
+        xmin_3857 = max(extent.xMinimum(), -WORLD_HALF_3857)
+        xmax_3857 = min(extent.xMaximum(),  WORLD_HALF_3857)
+        ymin_3857 = max(extent.yMinimum(), -WORLD_HALF_3857)
+        ymax_3857 = min(extent.yMaximum(),  WORLD_HALF_3857)
+
+        lon_global = (xmax_3857 - xmin_3857) >= 0.99 * WORLD_W_3857
+
+        crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
+        xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
+        bl = xform.transform(xmin_3857, ymin_3857)
+        tr = xform.transform(xmax_3857, ymax_3857)
+        min_lon_raw, min_lat_raw = bl.x(), bl.y()
+        max_lon_raw, max_lat_raw = tr.x(), tr.y()
+
+    elif crs_canvas.authid() == 'EPSG:4326':
+        lon_global = False
+        min_lon_raw, max_lon_raw = extent.xMinimum(), extent.xMaximum()
+        min_lat_raw, max_lat_raw = extent.yMinimum(), extent.yMaximum()
+
+    else:
+        lon_global = False
+        crs_dest = QgsCoordinateReferenceSystem('EPSG:4326')
+        xform = QgsCoordinateTransform(crs_canvas, crs_dest, QgsProject.instance())
+        bl = xform.transform(extent.xMinimum(), extent.yMinimum())
+        tr = xform.transform(extent.xMaximum(), extent.yMaximum())
+        min_lon_raw, min_lat_raw = bl.x(), bl.y()
+        max_lon_raw, max_lat_raw = tr.x(), tr.y()
+
+    min_lat = _clamp_lat(min_lat_raw)
+    max_lat = _clamp_lat(max_lat_raw)
+    if min_lat > max_lat:
+        min_lat, max_lat = max_lat, min_lat
+
+    lat_global = lon_global or (
+        crs_canvas.authid() == 'EPSG:3857'
+        and abs(min_lat + WEBMERC_LAT_LIMIT) < 0.05
+        and abs(max_lat - WEBMERC_LAT_LIMIT) < 0.05
     )
-else:
-    lon_clause = f"ps.LON BETWEEN {_format_num(min_lon)} AND {_format_num(max_lon)}"
+    if lat_global:
+        min_lat, max_lat = -90.0, 90.0
 
-if lat_global:
+    if lon_global:
+        min_lon, max_lon = -180.0, 180.0
+        lon_wrap = False
+    else:
+        min_lon = _norm_lon(min_lon_raw)
+        max_lon = _norm_lon(max_lon_raw)
+        lon_wrap = min_lon > max_lon
+
+    if lon_global:
+        lon_clause = "1=1"
+    elif lon_wrap:
+        lon_clause = (
+            f"(ps.LON BETWEEN {_format_num(min_lon)} AND 180) "
+            f"OR (ps.LON BETWEEN -180 AND {_format_num(max_lon)})"
+        )
+    else:
+        lon_clause = f"ps.LON BETWEEN {_format_num(min_lon)} AND {_format_num(max_lon)}"
+
+    if lat_global:
+        lat_clause = "1=1"
+    else:
+        lat_clause = f"ps.LAT BETWEEN {_format_num(min_lat)} AND {_format_num(max_lat)}"
+
+except Exception as e:
+    _msg(Qgis.Warning, f"Failed to read canvas extent; using global bbox. ({e})")
+    lon_clause = "1=1"
     lat_clause = "1=1"
-else:
-    lat_clause = f"ps.LAT BETWEEN {_format_num(min_lat)} AND {_format_num(max_lat)}"
 
-# ---------- UI Dialog ----------
+# =========================================================
+# ----------------------- UI Dialog -----------------------
+# =========================================================
 
 class InputDialog(QDialog):
     def __init__(self):
@@ -119,16 +240,16 @@ class InputDialog(QDialog):
         self.setWindowTitle("MSSQL Query Exporter")
         self.settings = QSettings()
 
-        self.conn_name_input = QLineEdit(self.settings.value("conn_name", ""))
-        self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))
-        self.output_file_input = QLineEdit(self.settings.value("output_file", "output.csv"))
+        # Fine-tuning defaults requested
+        self.conn_name_input = QLineEdit(self.settings.value("conn_name", "dbdev"))
+        self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))   # default empty
+        self.output_file_input = QLineEdit(self.settings.value("output_file", ""))   # default empty
         self.speed_from_input = QLineEdit(self.settings.value("speed_from", "0"))
         self.speed_to_input = QLineEdit(self.settings.value("speed_to", "0"))
-        self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2023-07-20 00:00"))
-        self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2023-07-20 00:00"))
+        self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2026-02-01 00:00"))
+        self.timestamp_end_input = QLineEdit(self.settings.value("timestamp_end", "2026-02-28 00:00"))
         self.only_imo_checkbox = QCheckBox("Only Having IMO")
         self.only_imo_checkbox.setChecked(str(self.settings.value("only_having_imo", "true")).lower() == "true")
-        # Optional: ship_ids (comma-separated)
         self.ship_ids_input = QLineEdit(self.settings.value("ship_ids", ""))
 
         self.select_button = QPushButton("Change Folder")
@@ -139,9 +260,9 @@ class InputDialog(QDialog):
 
         layout = QFormLayout()
         layout.addRow("Connection Name:", self.conn_name_input)
-        layout.addRow(QLabel("Output Folder:"))
+        layout.addRow(QLabel("Output Folder (leave empty = no CSV):"))
         layout.addRow(folder_layout)
-        layout.addRow("Output File Name:", self.output_file_input)
+        layout.addRow("Output File Name (optional):", self.output_file_input)
         layout.addRow("Speed From:", self.speed_from_input)
         layout.addRow("Speed To:", self.speed_to_input)
         layout.addRow("Timestamp Start:", self.timestamp_start_input)
@@ -181,49 +302,50 @@ class InputDialog(QDialog):
             "ship_ids": self.ship_ids_input.text(),
         }
 
-# ---------- Run dialog ----------
+# =========================================================
+# -------------------------- Run --------------------------
+# =========================================================
 
-app = QApplication.instance() or QApplication(sys.argv)
-dialog = InputDialog()
-if not dialog.exec_():
-    raise Exception("Cancelled by user")
+try:
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = InputDialog()
+    if not dialog.exec_():
+        _msg(Qgis.Warning, "Cancelled.")
+        raise Exception("Cancelled by user")
 
-values = dialog.get_values()
-settings = QSettings()
-for key, val in values.items():
-    settings.setValue(key, str(val))
+    values = dialog.get_values()
+    settings = QSettings()
+    for key, val in values.items():
+        settings.setValue(key, str(val))
 
-conn_name = values["conn_name"]
-folder = values["folder_path"]
-output_file = values["output_file"]
-speed_from = values["speed_from"]
-speed_to = values["speed_to"]
-timestamp_start = values["timestamp_start"]
-timestamp_end = values["timestamp_end"]
-only_having_imo = values["only_having_imo"]
-ship_ids_text = values["ship_ids"]
+    conn_name = values["conn_name"].strip()
+    folder = values["folder_path"].strip()
+    # If user leaves output_file empty, default to output.csv ONLY when saving
+    output_file = values["output_file"].strip()
+    speed_from = values["speed_from"]
+    speed_to = values["speed_to"]
+    timestamp_start = values["timestamp_start"]
+    timestamp_end = values["timestamp_end"]
+    only_having_imo = values["only_having_imo"]
+    ship_ids_text = values["ship_ids"]
 
-# Ensure folder exists
-if folder and not os.path.isdir(folder):
-    os.makedirs(folder, exist_ok=True)
+    if folder and not os.path.isdir(folder):
+        os.makedirs(folder, exist_ok=True)
 
-# Optional ship_id filter
-ship_ids_clause = ""
-if ship_ids_text.strip():
-    ids = []
-    for part in ship_ids_text.split(","):
-        p = part.strip()
-        if p:
-            try:
-                ids.append(int(p))
-            except ValueError:
-                pass  # skip non-numeric entries silently
-    if ids:
-        ship_ids_clause = f"  and ps.SHIP_ID in ({','.join(str(i) for i in ids)})"
+    ship_ids_clause = ""
+    if ship_ids_text.strip():
+        ids = []
+        for part in ship_ids_text.split(","):
+            p = part.strip()
+            if p:
+                try:
+                    ids.append(int(p))
+                except ValueError:
+                    pass
+        if ids:
+            ship_ids_clause = f"  and ps.SHIP_ID in ({','.join(str(i) for i in ids)})"
 
-# ---------- SQL ----------
-
-sql = f"""
+    sql = f"""
 select
     ps.SHIP_ID,
     ps.LON,
@@ -278,52 +400,188 @@ where {lon_clause}
 {ship_ids_clause}
 """
 
-# ---------- Execute ----------
+    md = QgsProviderRegistry.instance().providerMetadata("mssql")
+    conn_metadata = md.findConnection(conn_name)
+    if not conn_metadata:
+        _msg(Qgis.Warning, f"Connection '{conn_name}' not found.")
+        raise Exception(f"Connection '{conn_name}' not found")
 
-md = QgsProviderRegistry.instance().providerMetadata("mssql")
-conn_metadata = md.findConnection(conn_name)
-if not conn_metadata:
-    raise Exception(f"Connection '{conn_name}' not found")
+    conn = md.createConnection(conn_metadata.uri(), {})
+    results = conn.executeSql(sql)
 
-conn = md.createConnection(conn_metadata.uri(), {})
+    total_count = len(results) if results else 0
+    if total_count == 0:
+        _msg(Qgis.Warning, "No results (0 rows).")
+        raise Exception("No rows returned")
 
-# Run the actual query first
-results = conn.executeSql(sql)
+    # ---------------------- Save CSV (only if folder provided) ----------------------
+    header = [
+        "SHIP_ID", "LON", "LAT", "TIMESTAMP", "SPEED", "COURSE", "HEADING",
+        "shipname", "IMO", "comfleet_groupedtype", "type_summary",
+        "type_name", "GRT", "DWT", "mt_link"
+    ]
 
-# Count results and ask user whether to save
-total_count = len(results) if results else 0
+    if folder:
+        reply = QMessageBox.question(
+            None, "Confirm Save",
+            f"Query returned {total_count} rows.\nDo you want to save them to CSV?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            outname = output_file if output_file else "output.csv"
+            output_path = os.path.join(folder, outname)
+            with open(output_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                for row in results:
+                    writer.writerow(row)
+            print(f"✅ CSV saved to {output_path}")
+        else:
+            print("ℹ️ CSV save declined.")
+    else:
+        print("ℹ️ Output folder empty → CSV not saved (no prompt).")
 
-if total_count == 0:
-    QMessageBox.information(None, "No Results", "The query returned 0 rows. Nothing to save.")
-    raise Exception("No rows returned")
+    # ---------------------- Replace memory layer + symbology ----------------------
+    LAYER_NAME = "MT Box positions"
 
-reply = QMessageBox.question(
-    None, "Confirm Save",
-    f"Query returned {total_count} rows.\nDo you want to save them to CSV?",
-    QMessageBox.Yes | QMessageBox.No
-)
-if reply != QMessageBox.Yes:
-    raise Exception("Cancelled by user")
+    prev_category_state = {}  # value(str) -> bool
+    project = QgsProject.instance()
+    root = project.layerTreeRoot()
 
-# Explicit column names
-header = [
-    "SHIP_ID", "LON", "LAT", "TIMESTAMP", "SPEED", "COURSE", "HEADING",
-    "shipname", "IMO", "comfleet_groupedtype", "type_summary",
-    "type_name", "GRT", "DWT", "mt_link"
-]
+    existing = project.mapLayersByName(LAYER_NAME)
+    if existing:
+        old_layer = existing[0]
+        if old_layer.renderer() and isinstance(old_layer.renderer(), QgsCategorizedSymbolRenderer):
+            try:
+                for cat in old_layer.renderer().categories():
+                    prev_category_state[str(cat.value())] = bool(cat.renderState())
+            except Exception:
+                pass
+        project.removeMapLayer(old_layer.id())
 
-# Write CSV
-output_path = os.path.join(folder, output_file)
-with open(output_path, "w", newline="", encoding="utf-8") as f:
-    writer = csv.writer(f)
-    if header:
-        writer.writerow(header)
+    crs_src = QgsCoordinateReferenceSystem("EPSG:4326")
+    crs_dst = project.crs()
+    xform_to_project = QgsCoordinateTransform(crs_src, crs_dst, project)
+
+    mem = QgsVectorLayer(f"Point?crs={crs_dst.authid()}", LAYER_NAME, "memory")
+    pr = mem.dataProvider()
+
+    fields = QgsFields()
+    fields.append(QgsField("SHIP_ID", QVariant.Int))
+    fields.append(QgsField("LON", QVariant.Double))
+    fields.append(QgsField("LAT", QVariant.Double))
+    fields.append(QgsField("TIMESTAMP", QVariant.String))
+    fields.append(QgsField("SPEED", QVariant.Int))
+    fields.append(QgsField("COURSE", QVariant.Int))
+    fields.append(QgsField("HEADING", QVariant.Int))
+    fields.append(QgsField("shipname", QVariant.String))
+    fields.append(QgsField("IMO", QVariant.LongLong))
+    fields.append(QgsField("comfleet_groupedtype", QVariant.String))
+    fields.append(QgsField("type_summary", QVariant.String))
+    fields.append(QgsField("type_name", QVariant.String))
+    fields.append(QgsField("GRT", QVariant.Double))
+    fields.append(QgsField("DWT", QVariant.Double))
+    fields.append(QgsField("mt_link", QVariant.String))
+    pr.addAttributes(fields)
+    mem.updateFields()
+
+    feats = []
     for row in results:
-        writer.writerow(row)
+        lon = _to_float(row[1])
+        lat = _to_float(row[2])
+        if lon is None or lat is None:
+            continue
 
-print(f"✅ Query executed and saved to {output_path}")
+        try:
+            pt_proj = xform_to_project.transform(QgsPointXY(lon, lat))
+        except Exception:
+            continue
 
+        f = QgsFeature(mem.fields())
+        f.setGeometry(QgsGeometry.fromPointXY(pt_proj))
+        f.setAttributes([
+            _to_int(row[0]),
+            lon,
+            lat,
+            _to_str(row[3]),
+            _to_int(row[4]),
+            _to_int(row[5]),
+            _to_int(row[6]),
+            _to_str(row[7]),
+            _to_long(row[8]),
+            _to_str(row[9]),
+            _to_str(row[10]),
+            _to_str(row[11]),
+            _to_float(row[12]),
+            _to_float(row[13]),
+            _to_str(row[14]),
+        ])
+        feats.append(f)
 
+    pr.addFeatures(feats)
+    mem.updateExtents()
 
+    # Symbology mapping
+    COLOR_MAP = {
+        "CONTAINER SHIPS":    "rgb( 160, 204, 114 )",
+        "DRY BULK":           "rgb( 183, 153, 77 )",
+        "DRY BREAKBULK":      "rgb( 225, 201, 98 )",
+        "WET BULK":           "rgb( 51, 158, 233 )",
+        "LPG CARRIERS":       "rgb( 225, 105, 173 )",
+        "LNG CARRIERS":       "rgb( 225, 90, 173 )",
+        "PASSENGER SHIPS":    "rgb( 79, 255, 232 )",
+        "RO/RO":              "rgb( 153, 153, 153 )",
+        "OFFSHORE/RIGS":      "rgb( 215, 105, 54 )",
+        "PLEASURE CRAFT":     "rgb( 246, 215, 246 )",
+        "FISHING":            "rgb( 246, 215, 246 )",
+        "SUPPORTING VESSELS": "rgb( 186, 208, 181 )",
+        "OTHER MARKETS":      "rgb( 186, 208, 181 )",
+    }
+    DEFAULT_COLOR = QColor(201, 201, 201)
 
+    idx = mem.fields().indexOf("comfleet_groupedtype")
+    unique_vals = set()
+    for ft in mem.getFeatures():
+        v = ft.attribute(idx)
+        unique_vals.add("" if v is None else str(v))
 
+    categories = []
+
+    # Keep your palette in fixed order (even if absent this run)
+    for k, rgb in COLOR_MAP.items():
+        sym = _mk_marker_symbol(_parse_rgb(rgb))
+        cat = QgsRendererCategory(k, sym, k)
+        if str(k) in prev_category_state:
+            cat.setRenderState(prev_category_state[str(k)])
+        categories.append(cat)
+
+    # Any other values encountered -> grey
+    other_vals = sorted([v for v in unique_vals if v and v not in COLOR_MAP])
+    for v in other_vals:
+        sym = _mk_marker_symbol(DEFAULT_COLOR)
+        cat = QgsRendererCategory(v, sym, v)
+        if str(v) in prev_category_state:
+            cat.setRenderState(prev_category_state[str(v)])
+        categories.append(cat)
+
+    # Empty/null bucket if present
+    if "" in unique_vals:
+        sym = _mk_marker_symbol(DEFAULT_COLOR)
+        cat = QgsRendererCategory("", sym, "(empty)")
+        if "" in prev_category_state:
+            cat.setRenderState(prev_category_state[""])
+        categories.append(cat)
+
+    renderer = QgsCategorizedSymbolRenderer("comfleet_groupedtype", categories)
+    mem.setRenderer(renderer)
+
+    project.addMapLayer(mem)
+    iface.mapCanvas().refresh()
+
+    # Success message (green)
+    _msg(Qgis.Success, f"Layer updated: {len(feats)} positions imported")
+
+except Exception as e:
+    # Cancel/fail message (yellow)
+    _msg(Qgis.Warning, str(e))
+    raise
