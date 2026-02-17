@@ -380,7 +380,7 @@ from (
     select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
         from [ais_archive_2026A].[dbo].[POS_ARCHIVE] with (nolock)
 ) as ps
-left join [dbo].[V_SHIP_BATCH] as s with (nolock)
+left join [ais_replica].[dbo].[V_SHIP_BATCH1] as s with (nolock)
     on ps.ship_id = s.ship_id
 where {lon_clause}
   and {lat_clause}
