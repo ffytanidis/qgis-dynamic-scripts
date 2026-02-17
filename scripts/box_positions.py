@@ -18,9 +18,9 @@ from qgis.core import (
     QgsCategorizedSymbolRenderer,
     QgsRendererCategory,
     QgsMarkerSymbol,
+    Qgis
 )
 from qgis.utils import iface
-from qgis.core import Qgis  # for message bar levels
 import csv
 import os
 import sys
@@ -30,16 +30,19 @@ import math
 # ----------------------- Helpers -------------------------
 # =========================================================
 
-def _msg(level, text, title="MT Box"):
-    """
-    Show a QGIS message bar message.
-    level: Qgis.Info / Qgis.Warning / Qgis.Critical / Qgis.Success
-    """
+def _msg(level, text, title="MT Box", duration=6):
+    """QGIS message bar helper."""
     try:
-        iface.messageBar().pushMessage(title, text, level=level, duration=6)
+        iface.messageBar().pushMessage(title, text, level=level, duration=duration)
     except Exception:
-        # Fallback if messageBar not available for any reason
         print(f"[{title}] {text}")
+
+def _clear_msgbar():
+    """Clear message bar widgets (useful for 'running...' persistent messages)."""
+    try:
+        iface.messageBar().clearWidgets()
+    except Exception:
+        pass
 
 def _norm_lon(lon):
     """Normalize longitude to [-180, 180]."""
@@ -86,18 +89,9 @@ def _mk_marker_symbol(color: QColor, size_mm=2.4, outline_color=QColor(0, 0, 0),
 
 # --- QVariant-safe conversions ---
 
-def _qv_to_py(v):
-    try:
-        if isinstance(v, QVariant):
-            return v
-    except Exception:
-        pass
-    return v
-
 def _to_str(v):
     if v is None:
         return ""
-    v = _qv_to_py(v)
     try:
         if isinstance(v, QVariant):
             return v.toString()
@@ -108,7 +102,6 @@ def _to_str(v):
 def _to_float(v):
     if v is None:
         return None
-    v = _qv_to_py(v)
     try:
         if isinstance(v, QVariant):
             d, ok = v.toDouble()
@@ -123,7 +116,6 @@ def _to_float(v):
 def _to_int(v):
     if v is None:
         return None
-    v = _qv_to_py(v)
     try:
         if isinstance(v, QVariant):
             i, ok = v.toInt()
@@ -138,7 +130,6 @@ def _to_int(v):
 def _to_long(v):
     if v is None:
         return None
-    v = _qv_to_py(v)
     try:
         if isinstance(v, QVariant):
             i, ok = v.toLongLong()
@@ -156,9 +147,9 @@ try:
     extent = canvas.extent()
     crs_canvas = canvas.mapSettings().destinationCrs()
 
-    WORLD_HALF_3857 = 20037508.342789244
+    WORLD_HALF_3857 = 20037508.342789244  # meters
     WORLD_W_3857 = 2 * WORLD_HALF_3857
-    WEBMERC_LAT_LIMIT = 85.0511287798066
+    WEBMERC_LAT_LIMIT = 85.0511287798066  # deg
 
     if crs_canvas.authid() == 'EPSG:3857':
         xmin_3857 = max(extent.xMinimum(), -WORLD_HALF_3857)
@@ -240,10 +231,9 @@ class InputDialog(QDialog):
         self.setWindowTitle("MSSQL Query Exporter")
         self.settings = QSettings()
 
-        # Fine-tuning defaults requested
         self.conn_name_input = QLineEdit(self.settings.value("conn_name", "dbdev"))
-        self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))   # default empty
-        self.output_file_input = QLineEdit(self.settings.value("output_file", ""))   # default empty
+        self.folder_path_input = QLineEdit(self.settings.value("folder_path", ""))  # default empty
+        self.output_file_input = QLineEdit(self.settings.value("output_file", ""))  # default empty
         self.speed_from_input = QLineEdit(self.settings.value("speed_from", "0"))
         self.speed_to_input = QLineEdit(self.settings.value("speed_to", "0"))
         self.timestamp_start_input = QLineEdit(self.settings.value("timestamp_start", "2026-02-01 00:00"))
@@ -309,9 +299,10 @@ class InputDialog(QDialog):
 try:
     app = QApplication.instance() or QApplication(sys.argv)
     dialog = InputDialog()
+
     if not dialog.exec_():
         _msg(Qgis.Warning, "Cancelled.")
-        raise Exception("Cancelled by user")
+        raise Exception("Cancelled")
 
     values = dialog.get_values()
     settings = QSettings()
@@ -320,8 +311,7 @@ try:
 
     conn_name = values["conn_name"].strip()
     folder = values["folder_path"].strip()
-    # If user leaves output_file empty, default to output.csv ONLY when saving
-    output_file = values["output_file"].strip()
+    output_file = values["output_file"].strip()  # may be empty
     speed_from = values["speed_from"]
     speed_to = values["speed_to"]
     timestamp_start = values["timestamp_start"]
@@ -345,6 +335,7 @@ try:
         if ids:
             ship_ids_clause = f"  and ps.SHIP_ID in ({','.join(str(i) for i in ids)})"
 
+    # mt_link removed
     sql = f"""
 select
     ps.SHIP_ID,
@@ -360,8 +351,7 @@ select
     s.type_summary,
     s.type_name,
     s.GRT,
-    s.DWT,
-    'https://www.marinetraffic.com/en/ais/details/ships/shipid:' + CAST(ps.SHIP_ID AS VARCHAR) as mt_link
+    s.DWT
 from (
     select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
         from [ais_archive_2022A].[dbo].[POS_ARCHIVE] with (nolock)
@@ -407,7 +397,20 @@ where {lon_clause}
         raise Exception(f"Connection '{conn_name}' not found")
 
     conn = md.createConnection(conn_metadata.uri(), {})
+
+    # -------------------------------------------------------
+    # Message bar "running query..." (blue if theme supports)
+    # -------------------------------------------------------
+    _clear_msgbar()
+    _msg(Qgis.Info, "Running query…", duration=0)  # duration=0 => persistent
+
+    # Console prints (requested)
+    print("▶ Running query...")
     results = conn.executeSql(sql)
+    print("✔ Query finished.")
+
+    # Remove "running..." message
+    _clear_msgbar()
 
     total_count = len(results) if results else 0
     if total_count == 0:
@@ -418,7 +421,7 @@ where {lon_clause}
     header = [
         "SHIP_ID", "LON", "LAT", "TIMESTAMP", "SPEED", "COURSE", "HEADING",
         "shipname", "IMO", "comfleet_groupedtype", "type_summary",
-        "type_name", "GRT", "DWT", "mt_link"
+        "type_name", "GRT", "DWT"
     ]
 
     if folder:
@@ -481,7 +484,6 @@ where {lon_clause}
     fields.append(QgsField("type_name", QVariant.String))
     fields.append(QgsField("GRT", QVariant.Double))
     fields.append(QgsField("DWT", QVariant.Double))
-    fields.append(QgsField("mt_link", QVariant.String))
     pr.addAttributes(fields)
     mem.updateFields()
 
@@ -514,14 +516,12 @@ where {lon_clause}
             _to_str(row[11]),
             _to_float(row[12]),
             _to_float(row[13]),
-            _to_str(row[14]),
         ])
         feats.append(f)
 
     pr.addFeatures(feats)
     mem.updateExtents()
 
-    # Symbology mapping
     COLOR_MAP = {
         "CONTAINER SHIPS":    "rgb( 160, 204, 114 )",
         "DRY BULK":           "rgb( 183, 153, 77 )",
@@ -547,7 +547,6 @@ where {lon_clause}
 
     categories = []
 
-    # Keep your palette in fixed order (even if absent this run)
     for k, rgb in COLOR_MAP.items():
         sym = _mk_marker_symbol(_parse_rgb(rgb))
         cat = QgsRendererCategory(k, sym, k)
@@ -555,7 +554,6 @@ where {lon_clause}
             cat.setRenderState(prev_category_state[str(k)])
         categories.append(cat)
 
-    # Any other values encountered -> grey
     other_vals = sorted([v for v in unique_vals if v and v not in COLOR_MAP])
     for v in other_vals:
         sym = _mk_marker_symbol(DEFAULT_COLOR)
@@ -564,7 +562,6 @@ where {lon_clause}
             cat.setRenderState(prev_category_state[str(v)])
         categories.append(cat)
 
-    # Empty/null bucket if present
     if "" in unique_vals:
         sym = _mk_marker_symbol(DEFAULT_COLOR)
         cat = QgsRendererCategory("", sym, "(empty)")
@@ -575,13 +572,14 @@ where {lon_clause}
     renderer = QgsCategorizedSymbolRenderer("comfleet_groupedtype", categories)
     mem.setRenderer(renderer)
 
-    project.addMapLayer(mem)
-    iface.mapCanvas().refresh()
+    # Add layer straight at TOP of layer tree
+    project.addMapLayer(mem, False)  # do not auto-add to legend
+    root.insertLayer(0, mem)         # insert at top (above all groups/layers)
 
-    # Success message (green)
+    iface.mapCanvas().refresh()
     _msg(Qgis.Success, f"Layer updated: {len(feats)} positions imported")
 
 except Exception as e:
-    # Cancel/fail message (yellow)
+    _clear_msgbar()
     _msg(Qgis.Warning, str(e))
     raise
