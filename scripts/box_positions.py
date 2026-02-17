@@ -21,6 +21,7 @@ from qgis.core import (
     Qgis
 )
 from qgis.utils import iface
+from qgis.PyQt.QtWidgets import QApplication as QtApp
 import csv
 import os
 import sys
@@ -34,15 +35,31 @@ def _msg(level, text, title="MT Box", duration=6):
     """QGIS message bar helper."""
     try:
         iface.messageBar().pushMessage(title, text, level=level, duration=duration)
+        QtApp.processEvents()  # ensure it renders in plugin runners too
     except Exception:
         print(f"[{title}] {text}")
 
 def _clear_msgbar():
-    """Clear message bar widgets (useful for 'running...' persistent messages)."""
+    """Clear message bar widgets."""
     try:
         iface.messageBar().clearWidgets()
+        QtApp.processEvents()
     except Exception:
         pass
+
+def _show_running(text="Running query…", title="MT Box"):
+    """
+    Show a persistent 'running...' message that reliably appears even when
+    the next call is blocking (e.g., DB query).
+    """
+    _clear_msgbar()
+    try:
+        iface.messageBar().pushMessage(title, text, level=Qgis.Info, duration=0)  # persistent
+        QtApp.processEvents()
+        # call processEvents twice to force paint on some runners/themes
+        QtApp.processEvents()
+    except Exception:
+        print(f"[{title}] {text}")
 
 def _norm_lon(lon):
     """Normalize longitude to [-180, 180]."""
@@ -380,7 +397,7 @@ from (
     select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
         from [ais_archive_2026A].[dbo].[POS_ARCHIVE] with (nolock)
 ) as ps
-left join [ais_replica].[dbo].[V_SHIP_BATCH1] as s with (nolock)
+left join [dbo].[V_SHIP_BATCH] as s with (nolock)
     on ps.ship_id = s.ship_id
 where {lon_clause}
   and {lat_clause}
@@ -399,17 +416,15 @@ where {lon_clause}
     conn = md.createConnection(conn_metadata.uri(), {})
 
     # -------------------------------------------------------
-    # Message bar "running query..." (blue if theme supports)
+    # Reliable "Running query..." message (forces UI paint)
     # -------------------------------------------------------
-    _clear_msgbar()
-    _msg(Qgis.Info, "Running query…", duration=0)  # duration=0 => persistent
+    _show_running("Running query…")
 
-    # Console prints (requested)
+    # Console prints (you asked to keep them)
     print("▶ Running query...")
     results = conn.executeSql(sql)
     print("✔ Query finished.")
 
-    # Remove "running..." message
     _clear_msgbar()
 
     total_count = len(results) if results else 0
