@@ -396,6 +396,9 @@ from (
     union all
     select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
         from [ais_archive_2026A].[dbo].[POS_ARCHIVE] with (nolock)
+    union all
+    select SHIP_ID, LON, LAT, [TIMESTAMP], SPEED, COURSE, HEADING
+        from [ais_archive_2026B].[dbo].[POS_ARCHIVE] with (nolock)
 ) as ps
 left join [dbo].[V_SHIP_BATCH] as s with (nolock)
     on ps.ship_id = s.ship_id
