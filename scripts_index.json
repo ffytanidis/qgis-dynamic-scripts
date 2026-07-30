@@ -68,6 +68,11 @@
     "name": "Vertex Alignment",
     "hover_text": "Aligns polygon boundaries by noding edges near existing vertices and snapping geometries to a shared vertex set derived from rounded coordinates, using a distance tolerance (EPSG:4326)",
     "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/Vertex_Alignment.py"
+  },
+  {
+    "name": "Refresh SSoT",
+    "hover_text": "Runs Parent and connection assignments, then quality checks, if critical error count = 0, then refresh SSoT mviews",
+    "url": "https://raw.githubusercontent.com/ffytanidis/qgis-dynamic-scripts/main/scripts/refresh_ssot.py"
   }
 ]
 
