@@ -34,7 +34,7 @@ class SsotRefreshDialog(QDialog):
     SETTINGS_KEY = "ssot_jobs/last_connection_name"
     DEFAULT_CONNECTION_NAME = "maritime_assets_geo_prod"
 
-    ESTIMATED_SECONDS = 97  # 01:37
+    ESTIMATED_SECONDS = 73 
 
     REFRESH_SQL = """
         SELECT geospatial.daily_jobs_ssot();
